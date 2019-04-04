@@ -1,0 +1,186 @@
+---
+title: "Glovo_Project"
+author: "Victor Vu"
+date: "23/03/2019"
+output: html_document
+---
+
+#Download The Required Packages
+
+```{r}
+library("Matrix")
+library("recommenderlab")
+library("dplyr")
+library(data.table)
+```
+
+# Load review dataset which includes business, user and review data
+
+```{r}
+# Data was subsetted to only include restaurant categories 
+review <- read.csv("review.csv")
+# Remove Duplicated Rows 
+set.seed(123)
+rating <<- review %>% distinct(user_id, business_id, .keep_all = TRUE)
+```
+
+#Creating Unique Row and Column out of User_ID and Business_ID 
+
+```{r}
+row <- data.frame(user_No= seq(1:length(unique(rating[,"user_id"]))),user_id= unique(rating[,"user_id"]))
+column <- data.frame(restaurant_No= seq(1:length(unique(rating[,"business_id"]))),business_id=unique(rating[,"business_id"]))
+
+#Merge the column and row with initial rating dataset
+rating <- merge(rating,row,by.x='user_id',by.y='user_id')
+rating <- merge(rating,column,by.x='business_id',by.y='business_id')
+```
+
+# Build the rating matrix out of unique rows and columns 
+
+```{r}
+matrix <- data.frame(
+  user =   rating$user_No, 
+  restaurant =  rating$restaurant_No, 
+  stars = rating$stars
+)
+set.seed(123)
+rating_matrix <- as(matrix,"realRatingMatrix")
+getRatingMatrix(rating_matrix)[1:10,1]
+```
+
+# Check if there are abnormal ratings in the dataset
+
+FALSE indicates that there are no abnormal values
+```{r}
+table(rating_matrix@data@x[] > 5) 
+table(rating_matrix@data@x[] < 1) 
+```
+
+# Build a Switching Hybrid Model. Apply Popularity to new and inactive user and use Hybrid weighted model for active user with more than 5 ratings.
+
+```{r cars}
+trainAlgorithm <- function(data) {
+  weighted_hybrid <<- HybridRecommender(
+      Recommender(data, method="POPULAR"),
+      Recommender(data, method = "IBCF", 
+                  param=list(normalize = "Z-Score", method="Cosine", k=50)),
+      Recommender(data, method="RANDOM"),
+      weights = c(0.09,0.9,0.01))
+  popularity <<- Recommender(data, method="POPULAR")
+}
+
+applyAlgorithm <- function(data) {
+  if (rowCounts(data) > 5) {
+    print("Hybrid Reccomender applied to Active User")
+    pred <<- predict(weighted_hybrid, data, type="topNList", n = 10)
+  } else {
+      print("Popularity Reccomender applied to Non-active User")
+      pred <<- predict(popularity, data, type="topNList", n = 10)   
+  }
+  return(as(pred, "list"))
+}
+```
+
+# Applied Location Based Recommender To Filter Result To Only Las Vegas
+```{r}
+set.seed(123)
+target_restaurants <- unique(rating[rating$city == 'Las Vegas','restaurant_No'])
+filtered_restaurants <- rating_matrix[,target_restaurants]
+# For training purpose, only keep users and restaurants with higher than 10 ratings
+filtered_restaurants <- filtered_restaurants[rowCounts(filtered_restaurants) > 10, colCounts(filtered_restaurants) > 10]
+```
+
+# Recommend To User 10 based in Las Vegas
+
+Explore the ratings of User 10 
+
+```{r}
+userRatings <- as(filtered_restaurants[50,], "list")[[1]]
+restaurantsWithRatings <- data.frame(names(userRatings))
+colnames(restaurantsWithRatings) <- "restaurant_No"
+
+#Merge The Ratings Of User 10 with the Review Dataset to extract information about each rating
+restaurantsWithRatings <- (merge(restaurantsWithRatings,rating,by='restaurant_No'))[,c(4,11,5,9)]
+restaurantsWithRatings <- restaurantsWithRatings %>% distinct(business_name, .keep_all = TRUE)
+restaurantsWithRatings 
+```
+
+#Train the model and obtain recommendations 
+```{r}
+trainAlgorithm(filtered_restaurants)
+```
+
+# Apply The Model to User 10 
+
+```{r}
+applyAlgorithm(filtered_restaurants[50,])
+```
+
+# Explore the recommendations for User 10 
+
+```{r}
+pred_restaurant <-  data.frame(as(pred, "list"))
+colnames(pred_restaurant) <- "restaurant_No"
+
+# Join the prediction dataframe with a dataframe that contain customer name 
+pred_restaurant <- (merge(pred_restaurant,rating, by='restaurant_No'))[,c(4,5,9)]
+pred_restaurant <- pred_restaurant %>% distinct(business_name, .keep_all = TRUE)
+pred_restaurant
+```
+
+# Apply Knowledge Based Recommender To Only Recommend only Mexican Restaurant 
+
+```{r}
+pred_restaurant[pred_restaurant$business_categories %like% "Mexican",]
+```
+
+# Applied Context Specific Recommendation To Recommend on restaurants in Las Vegas that serve   Breakfast
+
+```{r}
+set.seed(123)
+breakfast_restaurants <- unique(rating[rating$city == 'Las Vegas' & rating$business_categories %like% "Breakfast",'restaurant_No'])
+filtered_breakfast <- rating_matrix[,breakfast_restaurants]
+# For training purpose, only keep users and restaurants with higher than 10 ratings
+filtered_breakfast <- filtered_breakfast[rowCounts(filtered_breakfast) > 0, colCounts(filtered_breakfast) > 0]
+```
+
+# Test Context Specific Recommendation on User 1. This is a new User that based in Vegas and would like to have Juice & Smoothies for Breakfast
+
+
+```{r}
+userRatings <- as(filtered_breakfast[1,], "list")[[1]]
+restaurantsWithRatings <- data.frame(names(userRatings))
+colnames(restaurantsWithRatings) <- "restaurant_No"
+
+#Merge The Ratings Of User 10 with the Review Dataset to extract information about each rating
+restaurantsWithRatings <- (merge(restaurantsWithRatings,rating,by='restaurant_No'))[,c(4,11,5,9)]
+restaurantsWithRatings <- restaurantsWithRatings %>% distinct(business_name, .keep_all = TRUE)
+restaurantsWithRatings 
+```
+
+#Train the model and obtain recommendations
+
+```{r}
+trainAlgorithm(filtered_breakfast)
+applyAlgorithm(filtered_breakfast[1,])
+```
+
+# Explore the recommendations for User 1. 
+```{r}
+pred_restaurant <-  data.frame(as(pred, "list"))
+colnames(pred_restaurant) <- "restaurant_No"
+
+# Join the prediction dataframe with a dataframe that contain customer name 
+pred_restaurant <- (merge(pred_restaurant,rating, by='restaurant_No'))[,c(4,5,9)]
+pred_restaurant <- pred_restaurant %>% distinct(business_name, .keep_all = TRUE)
+pred_restaurant
+```
+
+# Knowledged Based Recommender is applied to restaurants that has Juice & Smoothies
+
+```{r}
+pred_restaurant[pred_restaurant$business_categories %like% "Juice Bars",]
+```
+
+
+
