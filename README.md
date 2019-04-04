@@ -1,2 +1,3 @@
 # Recommendation_Engine_Food_Delivery
-Build Hybrid Recommender for a food delivering company
+
+The objective of this report is to discuss the process of rebuilding the recommendation engine of Glovo’s restaurant delivery. Since data was not publicly available for Glovo, I decided to use Yelp review dataset due to the similarity in nature of the two companies. Data was further transformed to match the business specificity of Glovo. The current shortcomings of Glovo Recommendation Engine are low serendipity & low novelty, lack of personalization and long tail distribution of review. Thus, a new Cascade Hybrid Model was built by ensemble Context Sensitive, Location-Based, Knowledge Based, Popularity, Random and Item Based Collaborative Filtering recommender. Each algorithm feeds on the refined recommendations of the previous algorithm to provide the most relevant list of recommendations.
